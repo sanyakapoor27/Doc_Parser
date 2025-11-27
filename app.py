@@ -2,6 +2,7 @@ import streamlit as st
 import google.generativeai as genai
 from io import BytesIO
 import base64
+import tempfile
 from google.generativeai import types
 from PIL import Image
 from docx import Document
@@ -77,7 +78,7 @@ def generate_docx_bytes(extracted_text: str, logo_path="dmc_srilanka.jpg") -> by
     title_run.font.size = Pt(20)
 
     # Subtitle (smaller)
-    subtitle_run = right_para.add_run("Disaster Management Centre")
+    subtitle_run = right_para.add_run("Disaster Management Centre\n")
     subtitle_run.font.size = Pt(12)
     subtitle_run.bold = False
 
@@ -172,14 +173,17 @@ def run_extraction(file_handle):
     try:
         with st.spinner("Uploading document…"):
 
-            file_bytes = file_handle.read()
-            buffer = BytesIO(file_bytes)
-            
-            # 2. Use the BytesIO buffer and the original file name/type
+            temp_file = tempfile.NamedTemporaryFile(delete=False)
+            temp_file.write(file_handle.read())
+            temp_path = temp_file.name
+            temp_file.close()   
+            # ---------------------------------------
+            # 2. UPLOAD USING FILE PATH ONLY
+            # ---------------------------------------
             uploaded = genai.upload_file(
-                buffer, # Pass the standard BytesIO buffer
-                display_name=file_handle.name, # Include the display name
-                mime_type=file_handle.type  # Include the MIME type
+                path=temp_path,             # MUST be path
+                display_name=file_handle.name,   
+                mime_type=file_handle.type
             )
 
         st.success(f"File uploaded: {uploaded.name}")
@@ -206,6 +210,12 @@ def run_extraction(file_handle):
                 st.info("Temporary file cleaned.")
             except Exception as e:
                 print("Cleanup failed:", e)
+
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except:
+                pass
 
 
 # -----------------------------
