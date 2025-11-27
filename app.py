@@ -5,6 +5,10 @@ import base64
 from google.generativeai import types
 from PIL import Image
 from docx import Document
+from docx.shared import Inches, Pt
+from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
+from docx.oxml.ns import qn
+from docx.enum.table import WD_TABLE_ALIGNMENT
 import re
 import os
 from dotenv import load_dotenv
@@ -37,33 +41,68 @@ def setup_gemini(api_key):
 # -----------------------------
 # PDF Generator (unchanged)
 # -----------------------------
-def generate_docx_bytes(extracted_text: str) -> bytes:
+def generate_docx_bytes(extracted_text: str, logo_path="dmc_srilanka.jpg") -> bytes:
     """
-    Create a .docx in-memory from extracted_text and return bytes.
-    This also converts simple markdown-style pipe tables into real docx tables.
+    Create a .docx in-memory with:
+    - Logo on left
+    - Title + Subtitle on right
+    - Markdown table conversion
     """
     doc = Document()
-    doc.add_heading("Extracted Document Content", level=1)
+
+    # ---------------------------
+    # HEADER WITH LOGO + TITLES
+    # ---------------------------
+    table = doc.add_table(rows=1, cols=2)
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    table.autofit = False
+
+    # --- Left Cell: Logo ---
+    left_cell = table.cell(0, 0)
+    try:
+        paragraph = left_cell.paragraphs[0]
+        run = paragraph.add_run()
+        run.add_picture(logo_path, width=Inches(1.0))  # adjust size as needed
+    except Exception:
+        left_cell.text = ""  # prevents crash if logo missing
+
+    # --- Right Cell: Headings ---
+    right_cell = table.cell(0, 1)
+    right_para = right_cell.paragraphs[0]
+    right_para.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
+
+    # Title
+    title_run = right_para.add_run("Disaster Situation Reporting\n")
+    title_run.bold = True
+    title_run.font.size = Pt(20)
+
+    # Subtitle (smaller)
+    subtitle_run = right_para.add_run("Disaster Management Centre")
+    subtitle_run.font.size = Pt(12)
+    subtitle_run.bold = False
+
+    doc.add_paragraph("")  # spacing after header
+
+    # ---------------------------
+    # TEXT + TABLE PARSING
+    # ---------------------------
 
     lines = extracted_text.splitlines()
     i = 0
     n = len(lines)
 
-    # helper to detect a separator row like: | --- | ---: | :---: |
     def is_table_sep(line: str) -> bool:
-        # Allow leading/trailing pipes and spaces, and : or - characters and pipes
         return bool(re.match(r'^\s*\|?\s*[:\- ]+(\s*\|\s*[:\- ]+)+\s*\|?\s*$', line))
 
     while i < n:
         line = lines[i].rstrip('\n')
         stripped = line.strip()
 
-        # Start of a markdown table: header row followed by separator row
+        # Detect markdown table
         if '|' in stripped and (i + 1 < n) and is_table_sep(lines[i + 1]):
-            # parse header
             header_cells = [c.strip() for c in stripped.strip().strip('|').split('|')]
-            i += 2  # skip header + separator
-            # gather rows
+            i += 2
+
             table_rows = []
             while i < n:
                 row_line = lines[i].strip()
@@ -73,46 +112,38 @@ def generate_docx_bytes(extracted_text: str) -> bytes:
                 table_rows.append(cells)
                 i += 1
 
-            # create docx table: 1 header row + data rows
             cols = len(header_cells)
             rows = 1 + len(table_rows)
-            table = doc.add_table(rows=rows, cols=cols)
-            table.style = 'Table Grid'  # optional; remove if you do not want style
+            tbl = doc.add_table(rows=rows, cols=cols)
+            tbl.style = "Table Grid"
 
-            # fill header
             for ci, h in enumerate(header_cells):
-                try:
-                    table.rows[0].cells[ci].text = h
-                except IndexError:
-                    # guard in case of inconsistent column counts
-                    pass
+                tbl.rows[0].cells[ci].text = h
 
-            # fill data rows
             for r_idx, row in enumerate(table_rows, start=1):
                 for ci, cell in enumerate(row):
-                    try:
-                        table.rows[r_idx].cells[ci].text = cell
-                    except IndexError:
-                        pass
+                    if ci < cols:
+                        tbl.rows[r_idx].cells[ci].text = cell
 
-            doc.add_paragraph("")  # spacing after the table
-            continue  # skip the usual i += 1 since we've already advanced
+            doc.add_paragraph("")
+            continue
+
+        # Regular paragraph
+        clean_line = stripped.replace("**", "").replace("##", "").replace("###", "").strip()
+        if clean_line:
+            doc.add_paragraph(clean_line)
         else:
-            # Normal paragraph line: strip common markdown headings/asterisks
-            clean_line = stripped.replace("**", "").replace("##", "").replace("###", "").strip()
-            if clean_line:
-                doc.add_paragraph(clean_line)
-            else:
-                # preserve blank line
-                doc.add_paragraph("")
-            i += 1
+            doc.add_paragraph("")
 
-    # save to bytes buffer
+        i += 1
+
+    # ---------------------------
+    # RETURN BYTES
+    # ---------------------------
     buffer = BytesIO()
     doc.save(buffer)
     buffer.seek(0)
     return buffer.getvalue()
-
 
 # -----------------------------
 # FIXED: Run extraction WITHOUT using a client object
@@ -123,8 +154,8 @@ def run_extraction(file_handle):
         "Extract ALL structured and unstructured information from the input document, "
         "preserving layout and tables in Markdown. "
         "Return three sections: "
-        "## Extracted Content (English) — translated to English, "
-        "## Original Language Content — same formatting as document, "
+        "## Content (English) — translated to English, "
+        "## Content, "
         "## Summary — short English summary."
     )
 
@@ -137,10 +168,14 @@ def run_extraction(file_handle):
     try:
         with st.spinner("Uploading document…"):
 
-            # FIXED: Correct upload call
+            file_bytes = file_handle.read()
+            buffer = BytesIO(file_bytes)
+            
+            # 2. Use the BytesIO buffer and the original file name/type
             uploaded = genai.upload_file(
-                file_handle,
-                mime_type=file_handle.type
+                buffer, # Pass the standard BytesIO buffer
+                display_name=file_handle.name, # Include the display name
+                mime_type=file_handle.type  # Include the MIME type
             )
 
         st.success(f"File uploaded: {uploaded.name}")
@@ -160,13 +195,13 @@ def run_extraction(file_handle):
         st.error(f"Gemini API Error: {e}")
         return None
 
-    """finally:
+    finally:
         if uploaded:
             try:
-                genai.files.delete(name=uploaded.name)
+                genai.delete_file(name=uploaded.name)
                 st.info("Temporary file cleaned.")
             except Exception as e:
-                print("Cleanup failed:", e)"""
+                print("Cleanup failed:", e)
 
 
 # -----------------------------
@@ -223,7 +258,7 @@ if uploaded_file:
 
             # PDF Download
             try:
-                docx_bytes = generate_docx_bytes(content_for_pdf)
+                docx_bytes = generate_docx_bytes(content_for_pdf, "dmc_srilanka.jpg")
                 st.download_button(
                     label="⬇️ Download Extracted Content (DOCX)",
                     data=docx_bytes,
