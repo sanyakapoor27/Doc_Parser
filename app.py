@@ -81,6 +81,10 @@ def generate_docx_bytes(extracted_text: str, logo_path="dmc_srilanka.jpg") -> by
     subtitle_run.font.size = Pt(12)
     subtitle_run.bold = False
 
+    subtitle_run = right_para.add_run("Powered by IWMI")
+    subtitle_run.font.size = Pt(12)
+    subtitle_run.bold = False
+
     doc.add_paragraph("")  # spacing after header
 
     # ---------------------------
