@@ -264,39 +264,59 @@ if uploaded_file:
     gemini_ok = setup_gemini(api_key)
 
     if gemini_ok and st.button("🚀 Extract & Summarize Document", type="primary"):
-        full_output = run_extraction(uploaded_file)
+        # --- 1. EXTRACTION LOGIC (Only runs when button is clicked) ---
+        extracted_content = run_extraction(uploaded_file)
+        
+        # Store results in session state
+        if extracted_content:
+            st.session_state["full_output"] = extracted_content
+            st.session_state["has_results"] = True
+        else:
+            st.session_state["full_output"] = ""
+            st.session_state["has_results"] = False
 
-        if full_output:
-            st.header("✅ Extraction Results")
 
-            pattern = r"\s*##\s*Summary"
-            match = re.search(pattern, full_output, re.IGNORECASE)
+# --- 2. DISPLAY AND DOWNLOAD LOGIC (Runs on every rerun if results exist) ---
+if st.session_state.get("has_results", False):
+    full_output = st.session_state.get("full_output", "")
+    st.header("✅ Extraction Results")
 
-            content_for_pdf = full_output
+    # Regular expression to find the start of the Summary section
+    pattern = r"\s*##\s*Summary"
+    match = re.search(pattern, full_output, re.IGNORECASE)
 
-            if match:
-                idx = match.start()
-                content_for_pdf = full_output[:idx].strip()
-                summary_section = full_output[idx:].strip()
+    content_for_pdf = full_output
+    summary_section = ""
 
-                st.markdown(content_for_pdf)
+    if match:
+        idx = match.start()
+        # Content is everything BEFORE the Summary heading
+        content_for_pdf = full_output[:idx].strip()
+        # Summary is the Summary heading and everything AFTER it
+        summary_section = full_output[idx:].strip()
+        
+        # Display content
+        st.markdown(content_for_pdf)
 
-                st.markdown("---")
-                st.subheader("Summary (not included in DOC)")
-                st.markdown(summary_section.replace("## Summary", "", 1).strip())
-                st.markdown("---")
-            else:
-                st.markdown(full_output)
-                st.warning("Summary section not found — exporting whole output to PDF.")
+        st.markdown("---")
+        st.subheader("Summary")
+        # Display summary, removing the heading
+        st.markdown(summary_section.replace("## Summary", "", 1).strip())
+        st.markdown("---")
+    else:
+        # Display full output if no summary heading found
+        st.markdown(full_output)
+        st.warning("Summary section not found — exporting whole output to DOCX.")
 
-            # PDF Download
-            try:
-                docx_bytes = generate_docx_bytes(content_for_pdf, "dmc_srilanka.jpg")
-                st.download_button(
-                    label="⬇️ Download Extracted Content (DOCX)",
-                    data=docx_bytes,
-                    file_name="extracted_document_content.docx",
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                )
-            except Exception as e:
-                st.error(f"DOCX generation error: {e}")
+    # DOCX Download
+    try:
+        # Pass only the non-summary content for DOCX generation
+        docx_bytes = generate_docx_bytes(content_for_pdf, "dmc_srilanka.jpg")
+        st.download_button(
+            label="⬇️ Download Extracted Content (DOCX)",
+            data=docx_bytes,
+            file_name="extracted_document_content.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+    except Exception as e:
+        st.error(f"DOCX generation error: {e}")
