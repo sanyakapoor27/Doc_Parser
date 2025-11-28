@@ -18,11 +18,33 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Streamlit page config
+import streamlit as st
+from PIL import Image
+
 st.set_page_config(
-    page_title="Gemini Document Extractor",
+    page_title="Disaster Situation Reporting",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# -------- HEADER SECTION --------
+
+# Create two columns: logo (small) + text (wide)
+col1, col2 = st.columns([1, 6])
+
+with col1:
+    st.image("dmc_srilanka.jpg", width=100)  # adjust width as needed
+
+with col2:
+    st.markdown("""
+        <div style="display: flex; flex-direction: column; justify-content: center;">
+            <h1 style="margin-bottom:0;">Disaster Situation Reporting</h1>
+            <h3 style="margin-top:0; margin-bottom:0;">Disaster Management Centre</h3>
+            <p style="font-style: italic; margin-top:2px;">Powered by IWMI</p>
+        </div>
+    """, unsafe_allow_html=True)
+
+st.markdown("---")
 
 # -----------------------------
 # FIXED: Proper Gemini setup
