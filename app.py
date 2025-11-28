@@ -40,15 +40,12 @@ with col2:
         <div style="display: flex; flex-direction: column; justify-content: center;">
             <h1 style="margin-bottom:0;">Disaster Situation Reporting</h1>
             <h3 style="margin-top:0; margin-bottom:0;">Disaster Management Centre</h3>
-            <p style="font-style: italic; margin-top:2px;">Powered by IWMI</p>
+            <h4 style="font-style: italic; font-weight: normal; margin-top:2px;">Powered by International Water Management Institute</p>
         </div>
     """, unsafe_allow_html=True)
 
 st.markdown("---")
 
-# -----------------------------
-# FIXED: Proper Gemini setup
-# -----------------------------
 def setup_gemini(api_key):
     if not api_key:
         st.error("Gemini API key missing. Add GEMINI_API to your .env.")
